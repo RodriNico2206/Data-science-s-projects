@@ -1,0 +1,19 @@
+╔══════════════════════════════════════════════════════════════╗
+║                   PREDICTOR DE VENTAS                         ║
+╠══════════════════════════════════════════════════════════════╣
+║                                                               ║
+║  Cantidad: [    5    ]  Categoría: [Technology    ▼]        ║
+║  Descuento: [   10%   ]  Subcategoría: [Copiers      ▼]     ║
+║  Mes:       [ Diciembre▼]  Región:      [South        ▼]    ║
+║                                                               ║
+║  ┌─────────────────────────────────────────────────────┐    ║
+║  │                                                     │    ║
+║  │         VENTA ESTIMADA: $2,350.00                  │    ║
+║  │                                                     │    ║
+║  │   🔔 RECOMENDACIÓN: Producto de ALTO valor         │    ║
+║  │       Asegurar stock prioritario en región South   │    ║
+║  │                                                     │    ║
+║  └─────────────────────────────────────────────────────┘    ║
+║                                                               ║
+║  [Predecir]                  [Guardar simulación]           ║
+╚══════════════════════════════════════════════════════════════╝

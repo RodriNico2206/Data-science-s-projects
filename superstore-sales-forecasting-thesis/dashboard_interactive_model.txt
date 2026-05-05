@@ -17,3 +17,39 @@
 ║                                                               ║
 ║  [Predecir]                  [Guardar simulación]           ║
 ╚══════════════════════════════════════════════════════════════╝
+
+
+Pregunta:
+"¿Cómo cambian las ventas entre temporada baja y alta? ¿Cómo ajusto mi inventario?"
+
+🖥️ Cómo se usa la herramienta
+El planificador de inventario compara dos meses:
+
+Simulación A: Agosto (temporada baja)
+Variable	Valor
+Cantidad	1
+Descuento	0%
+Mes	Agosto (8)
+Categoría	Furniture
+Subcategoría	Chairs
+Región	Central
+
+
+Simulación B: Diciembre (temporada alta)
+Variable	Valor
+Cantidad	1
+Descuento	0%
+Mes	Diciembre (12)
+Categoría	Furniture
+Subcategoría	Chairs
+Región	Central
+
+
+RESULTADO DE SIMULACIÓN
+AGOSTO:
+VENTA ESTIMADA: $320.00
+Stock recomendado: 20 unidades
+
+DICIEMBRE:
+VENTA ESTIMADA: $580.00
+Stock recomendado: 35 unidades

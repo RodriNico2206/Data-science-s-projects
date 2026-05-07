@@ -1,6 +1,11 @@
-import streamlit as st, pandas as pd, joblib, numpy as np, os
+import streamlit as st
+import pandas as pd
+import joblib
+import numpy as np
+import os
 from datetime import datetime
 from pathlib import Path
+import calendar
 
 # Configuración de la página
 st.set_page_config(
@@ -9,49 +14,59 @@ st.set_page_config(
     layout="wide"
 )
 
-# Definir rutas absolutas (cambia esta ruta según tu proyecto)
-# Obtener la ruta del directorio actual del script
+# Definir rutas absolutas
 try:
-    # Si el script está en el directorio del proyecto
     SCRIPT_DIR = Path(__file__).parent.absolute()
 except NameError:
-    # Si se ejecuta en interactive mode (Jupyter, etc.)
     SCRIPT_DIR = Path.cwd()
-
-# O puedes definir la ruta manualmente (descomenta y modifica según tu caso)
-# SCRIPT_DIR = Path(r'C:\Users\Usuario\Documents\Data-science-s-projects\superstore-sales-forecasting-thesis')
 
 # Construir rutas absolutas
 RUTA_MODELO = SCRIPT_DIR / 'modelo_ventas.pkl'
 RUTA_FEATURES = SCRIPT_DIR / 'features.pkl'
 RUTA_SCALER = SCRIPT_DIR / 'scaler.pkl'
 
-# Función para verificar y cargar archivos
+# Función mejorada para cargar modelo
 @st.cache_resource
 def cargar_modelo_y_features():
-    """Carga el modelo, features y scaler usando rutas absolutas"""
+    """Carga el modelo, features y scaler - Maneja tanto modelos directos como diccionarios"""
     
-    # Verificar que existan los archivos necesarios
     if not RUTA_MODELO.exists():
         st.error(f"❌ No se encuentra el archivo: {RUTA_MODELO}")
-        st.info(f"Directorio actual: {SCRIPT_DIR}")
-        st.info("Asegúrate de que los archivos .pkl estén en el mismo directorio que este script")
-        return None, None, None, False
-    
-    if not RUTA_FEATURES.exists():
-        st.error(f"❌ No se encuentra el archivo: {RUTA_FEATURES}")
         return None, None, None, False
     
     try:
-        # Cargar modelo
-        modelo = joblib.load(RUTA_MODELO)
-        st.success(f"✅ Modelo cargado: {type(modelo).__name__}")
+        contenido = joblib.load(RUTA_MODELO)
         
-        # Cargar features
-        features = joblib.load(RUTA_FEATURES)
-        st.success(f"✅ Features cargadas: {len(features)} variables")
+        if isinstance(contenido, dict):
+            st.info("📦 Extrayendo modelo del diccionario...")
+            if 'modelo' in contenido:
+                modelo = contenido['modelo']
+                st.success(f"✅ Modelo extraído: {type(modelo).__name__}")
+                
+                if not RUTA_FEATURES.exists() and 'caracteristicas_entrenamiento' in contenido:
+                    features = contenido['caracteristicas_entrenamiento']
+                    st.success(f"✅ Features extraídas: {len(features)}")
+                else:
+                    features = None
+            else:
+                st.error("❌ No se encontró 'modelo' en el diccionario")
+                return None, None, None, False
+        else:
+            modelo = contenido
+            st.success(f"✅ Modelo cargado: {type(modelo).__name__}")
+            features = None
         
-        # Cargar scaler si existe
+        if RUTA_FEATURES.exists():
+            features = joblib.load(RUTA_FEATURES)
+            st.success(f"✅ Features cargadas: {len(features)} variables")
+        elif features is None:
+            if hasattr(modelo, 'feature_names_in_'):
+                features = list(modelo.feature_names_in_)
+                st.success(f"✅ Features del modelo: {len(features)}")
+            else:
+                st.error("❌ No se encontró features.pkl")
+                return None, None, None, False
+        
         if RUTA_SCALER.exists():
             scaler = joblib.load(RUTA_SCALER)
             usar_scaler = True
@@ -59,163 +74,184 @@ def cargar_modelo_y_features():
         else:
             scaler = None
             usar_scaler = False
-            st.info("⚠️ No se encontró scaler, se usará sin estandarización")
+            st.info("⚠️ Sin estandarización")
         
         return modelo, features, scaler, usar_scaler
     
     except Exception as e:
-        st.error(f"❌ Error al cargar los archivos: {str(e)}")
+        st.error(f"❌ Error: {str(e)}")
         return None, None, None, False
 
-# Título de la app
+def validar_dia(mes, año, dia):
+    """Valida que el día exista en el mes/año dado"""
+    if mes and año and dia:
+        _, ultimo_dia = calendar.monthrange(año, mes)
+        return min(dia, ultimo_dia)
+    return dia
+
+# Título
 st.title("🎯 Predictor de Ventas - Superstore")
 st.markdown("Ingresá los datos de la transacción para estimar las ventas")
 
 # Cargar modelos
 modelo, features, scaler, usar_scaler = cargar_modelo_y_features()
 
-# Si no se cargaron los modelos, detener la ejecución
 if modelo is None or features is None:
     with st.sidebar:
         st.error("⚠️ No se pudieron cargar los archivos necesarios")
-        st.write("**Solución:**")
-        st.write("1. Verifica que los archivos existan en:")
-        st.code(str(SCRIPT_DIR))
-        st.write("2. Archivos necesarios:")
-        st.write(f"   - modelo_ventas.pkl: {RUTA_MODELO.exists()}")
-        st.write(f"   - features.pkl: {RUTA_FEATURES.exists()}")
     st.stop()
 
-# Definir mapeos para crear variables dummy
+# Definir mapeos
 categorias = ['Furniture', 'Office Supplies', 'Technology']
 subcategorias = ['Bookcases', 'Chairs', 'Copiers', 'Machines', 'Phones', 'Tables']
 regiones = ['Central', 'East', 'South', 'West']
 segmentos = ['Consumer', 'Corporate', 'Home Office']
 
-# Crear inputs para el usuario
+# Crear inputs - CAMPOS VACÍOS AL INICIO
 col1, col2 = st.columns(2)
 
 with col1:
-    quantity = st.number_input("Cantidad", min_value=1, max_value=50, value=2)
-    discount = st.slider("Descuento (%)", 0, 100, 0) / 100
-    month = st.selectbox("Mes", range(1, 13))
-    day = st.number_input("Día", min_value=1, max_value=31, value=15)
-    year = st.number_input("Año", min_value=2020, max_value=2024, value=2024)
+    quantity = st.number_input("📦 Cantidad", value=None, step=1, placeholder="Ej: 2")
+    discount = st.slider("💰 Descuento (%)", 0, 100, 0) / 100
+    month = st.selectbox("📅 Mes", options=[None] + list(range(1, 13)), 
+                        format_func=lambda x: "Seleccione mes..." if x is None else calendar.month_name[x])
+    day = st.number_input("📆 Día", value=None, step=1, placeholder="Ej: 15")
+    year = st.number_input("📅 Año", value=None, step=1, placeholder="Ej: 2024")
 
 with col2:
-    category = st.selectbox("Categoría", categorias)
-    subcategory = st.selectbox("Subcategoría", subcategorias)
-    region = st.selectbox("Región", regiones)
-    segment = st.selectbox("Segmento", segmentos)
+    category = st.selectbox("🏷️ Categoría", options=[None] + categorias,
+                           format_func=lambda x: "Seleccione categoría..." if x is None else x)
+    subcategory = st.selectbox("📌 Subcategoría", options=[None] + subcategorias,
+                              format_func=lambda x: "Seleccione subcategoría..." if x is None else x)
+    region = st.selectbox("🌍 Región", options=[None] + regiones,
+                         format_func=lambda x: "Seleccione región..." if x is None else x)
+    segment = st.selectbox("👥 Segmento", options=[None] + segmentos,
+                          format_func=lambda x: "Seleccione segmento..." if x is None else x)
+
+# Validación de campos completos
+def validar_campos():
+    """Verifica que todos los campos necesarios estén completos"""
+    campos_faltantes = []
+    
+    if quantity is None:
+        campos_faltantes.append("Cantidad")
+    if month is None:
+        campos_faltantes.append("Mes")
+    if day is None:
+        campos_faltantes.append("Día")
+    if year is None:
+        campos_faltantes.append("Año")
+    if category is None:
+        campos_faltantes.append("Categoría")
+    if subcategory is None:
+        campos_faltantes.append("Subcategoría")
+    if region is None:
+        campos_faltantes.append("Región")
+    if segment is None:
+        campos_faltantes.append("Segmento")
+    
+    return campos_faltantes
+
+# Validar día del mes si hay mes y año
+if month and year and day:
+    dia_valido = validar_dia(month, year, day)
+    if day != dia_valido:
+        st.warning(f"⚠️ {calendar.month_name[month]} no tiene {day} días. Se ajustará a {dia_valido}")
+        day = dia_valido
 
 # Botón para predecir
-if st.button("Predecir Ventas", type="primary"):
-    try:
-        # Crear diccionario con todos los valores
-        input_dict = {
-            'Quantity': quantity,
-            'Discount': discount,
-            'Month': month,
-            'Day': day,
-            'Year': year,
-            'DayOfWeek': datetime(year, month, day).weekday(),  # 0=Lunes, 6=Domingo
-            'IsWeekend': 1 if datetime(year, month, day).weekday() >= 5 else 0
-        }
-        
-        # Agregar variables dummy (one-hot encoding)
-        # Categorías
-        for cat in categorias:
-            input_dict[f'Category_{cat}'] = 1 if category == cat else 0
-        
-        # Subcategorías
-        for sub in subcategorias:
-            input_dict[f'Subcategory_{sub}'] = 1 if subcategory == sub else 0
-        
-        # Regiones
-        for reg in regiones:
-            input_dict[f'Region_{reg}'] = 1 if region == reg else 0
-        
-        # Segmentos
-        for seg in segmentos:
-            input_dict[f'Segment_{seg}'] = 1 if segment == seg else 0
-        
-        # Crear DataFrame
-        input_data = pd.DataFrame([input_dict])
-        
-        # Asegurar que todas las features necesarias estén presentes
-        for feature in features:
-            if feature not in input_data.columns:
-                input_data[feature] = 0
-        
-        # Reordenar columnas para que coincidan con el entrenamiento
-        input_data = input_data[features]
-        
-        # Aplicar scaler si es necesario
-        if usar_scaler and scaler is not None:
-            # Identificar columnas numéricas
-            numeric_cols = ['Quantity', 'Discount', 'Day', 'Month', 'Year', 'DayOfWeek', 'IsWeekend']
-            numeric_cols_present = [col for col in numeric_cols if col in input_data.columns]
-            if numeric_cols_present:
-                input_data[numeric_cols_present] = scaler.transform(input_data[numeric_cols_present])
-        
-        # Realizar predicción
-        prediccion = modelo.predict(input_data)[0]
-        
-        # Mostrar resultado
-        st.success(f"💵 Venta estimada: **${prediccion:,.2f}**")
-        
-        # Mostrar recomendación basada en el resultado
-        st.subheader("📊 Recomendación:")
-        if prediccion > 1000:
-            st.info("💰 Producto de ALTO valor: Asegurar stock prioritario y considerar envío prioritario")
-        elif prediccion > 500:
-            st.info("📊 Producto de MEDIO-ALTO valor: Mantener stock regular y monitorear demanda")
-        elif prediccion > 200:
-            st.info("📦 Producto de MEDIO valor: Stock estándar, ideal para promociones")
-        else:
-            st.info("🎯 Producto de BAJO valor: Ideal para venta cruzada y paquetes promocionales")
-        
-        # Mostrar detalles de la predicción
-        with st.expander("Ver detalles de la predicción"):
-            st.write("**Variables ingresadas:**")
-            st.dataframe(input_data)
-            st.write(f"**Modelo utilizado:** {type(modelo).__name__}")
-            st.write(f"**Features utilizadas:** {len(features)} variables")
-            st.write(f"**Ruta del modelo:** {RUTA_MODELO}")
+if st.button("🔮 Predecir Ventas", type="primary", use_container_width=True):
+    # Verificar campos completos
+    campos_faltantes = validar_campos()
     
-    except Exception as e:
-        st.error(f"❌ Error al hacer la predicción: {str(e)}")
-        st.write("**Posibles causas:**")
-        st.write("- Las features del modelo no coinciden con las ingresadas")
-        st.write("- El scaler no está configurado correctamente")
-        st.write("- Error en los datos de entrada")
+    if campos_faltantes:
+        st.error(f"❌ Por favor complete los siguientes campos: {', '.join(campos_faltantes)}")
+    else:
+        try:
+            # Crear diccionario con todos los valores
+            input_dict = {
+                'Quantity': quantity,
+                'Discount': discount,
+                'Month': month,
+                'Day': day,
+                'Year': year,
+                'DayOfWeek': datetime(year, month, day).weekday(),
+                'IsWeekend': 1 if datetime(year, month, day).weekday() >= 5 else 0
+            }
+            
+            # Agregar variables dummy
+            for cat in categorias:
+                input_dict[f'Category_{cat}'] = 1 if category == cat else 0
+            
+            for sub in subcategorias:
+                input_dict[f'Subcategory_{sub}'] = 1 if subcategory == sub else 0
+            
+            for reg in regiones:
+                input_dict[f'Region_{reg}'] = 1 if region == reg else 0
+            
+            for seg in segmentos:
+                input_dict[f'Segment_{seg}'] = 1 if segment == seg else 0
+            
+            # Crear DataFrame
+            input_data = pd.DataFrame([input_dict])
+            
+            # Asegurar todas las features
+            for feature in features:
+                if feature not in input_data.columns:
+                    input_data[feature] = 0
+            
+            input_data = input_data[features]
+            
+            # Aplicar scaler si es necesario
+            if usar_scaler and scaler is not None:
+                numeric_cols = ['Quantity', 'Discount', 'Day', 'Month', 'Year', 'DayOfWeek', 'IsWeekend']
+                numeric_cols_present = [col for col in numeric_cols if col in input_data.columns]
+                if numeric_cols_present:
+                    input_data[numeric_cols_present] = scaler.transform(input_data[numeric_cols_present])
+            
+            # Predicción
+            prediccion = modelo.predict(input_data)[0]
+            
+            # Mostrar resultado
+            st.success(f"💵 Venta estimada: **${prediccion:,.2f}**")
+            
+            # Recomendaciones
+            st.subheader("📊 Recomendación:")
+            if prediccion > 1000:
+                st.info("💰 Producto de ALTO valor: Asegurar stock prioritario")
+            elif prediccion > 500:
+                st.info("📊 Producto de MEDIO-ALTO valor: Mantener stock regular")
+            elif prediccion > 200:
+                st.info("📦 Producto de MEDIO valor: Stock estándar")
+            else:
+                st.info("🎯 Producto de BAJO valor: Ideal para venta cruzada")
+            
+            # === SOLUCIÓN 1: DETALLES MEJORADOS ===
+            with st.expander("📋 Ver detalles de la predicción"):
+                st.write("**Variables ingresadas:**")
+                
+                # Configurar dataframe con ancho máximo y scroll horizontal
+                st.dataframe(
+                    input_data,
+                    use_container_width=True,  # Usa todo el ancho disponible
+                    height=300  # Altura fija con scroll vertical
+                )
+                
+                st.write(f"**Modelo utilizado:** {type(modelo).__name__}")
+                st.write(f"**Features utilizadas:** {len(features)} variables")
+                st.write(f"**Ruta del modelo:** {RUTA_MODELO}")
+        
+        except Exception as e:
+            st.error(f"❌ Error: {str(e)}")
 
-# Información del modelo en la barra lateral
+# Barra lateral
 with st.sidebar:
     st.header("📈 Información del Modelo")
     st.write(f"**Características:** {len(features)}")
-    st.write(f"**Tipo de modelo:** {type(modelo).__name__}")
-    st.write(f"**Usa Scaler:** {'Sí' if usar_scaler else 'No'}")
-    
-    st.subheader("📁 Ubicación de archivos")
-    st.write(f"**Directorio:** {SCRIPT_DIR}")
-    st.write(f"**Modelo:** {RUTA_MODELO.name}")
-    st.write(f"**Features:** {RUTA_FEATURES.name}")
-    
-    st.subheader("🔝 Variables principales")
-    for f in features[:5]:
-        st.write(f"- {f}")
-    if len(features) > 5:
-        st.write(f"... y {len(features)-5} más")
+    st.write(f"**Tipo:** {type(modelo).__name__}")
+    st.write(f"**Scaler:** {'Sí' if usar_scaler else 'No'}")
     
     st.header("💡 Consejos")
     st.write("- Descuentos >20% pueden reducir margen")
     st.write("- Tecnología suele tener mayor precio")
     st.write("- Finde semana = mayor actividad comercial")
-    
-    # Información de depuración (opcional)
-    with st.expander("🔧 Diagnóstico"):
-        st.write("**Archivos encontrados:**")
-        st.write(f"modelo_ventas.pkl: {RUTA_MODELO.exists()}")
-        st.write(f"features.pkl: {RUTA_FEATURES.exists()}")
-        st.write(f"scaler.pkl: {RUTA_SCALER.exists()}")
